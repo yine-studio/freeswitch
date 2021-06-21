@@ -10017,6 +10017,8 @@ static void generate_m(switch_core_session_t *session, char *buf, size_t buflen,
 #ifdef GOOGLE_ICE
 		switch_snprintf(buf + strlen(buf), buflen - strlen(buf), "a=ice-options:google-ice\r\n");
 #endif
+	} else {
+		switch_snprintf(buf + strlen(buf), buflen - strlen(buf), "a=ssrc:%u\r\n", a_engine->ssrc);
 	}
 
 
@@ -10767,6 +10769,8 @@ SWITCH_DECLARE(void) switch_core_media_gen_local_sdp(switch_core_session_t *sess
 #ifdef GOOGLE_ICE
 			switch_snprintf(buf + strlen(buf), SDPBUFLEN - strlen(buf), "a=ice-options:google-ice\r\n");
 #endif
+		} else {
+			switch_snprintf(buf + strlen(buf), SDPBUFLEN - strlen(buf), "a=ssrc:%u\r\n", a_engine->ssrc);
 		}
 
 		if (a_engine->crypto_type != CRYPTO_INVALID && !switch_channel_test_flag(session->channel, CF_DTLS) &&
@@ -11307,6 +11311,8 @@ SWITCH_DECLARE(void) switch_core_media_gen_local_sdp(switch_core_session_t *sess
 #endif
 					switch_snprintf(buf + strlen(buf), SDPBUFLEN - strlen(buf), "a=end-of-candidates\r\n");
 
+				} else {
+					switch_snprintf(buf + strlen(buf), SDPBUFLEN - strlen(buf), "a=ssrc:%u\r\n", v_engine->ssrc);
 				}
 
 
@@ -11654,6 +11660,8 @@ SWITCH_DECLARE(void) switch_core_media_gen_local_sdp(switch_core_session_t *sess
 #ifdef GOOGLE_ICE
 					switch_snprintf(buf + strlen(buf), SDPBUFLEN - strlen(buf), "a=ice-options:google-ice\r\n");
 #endif
+				} else {
+					switch_snprintf(buf + strlen(buf), SDPBUFLEN - strlen(buf), "a=ssrc:%u\r\n", t_engine->ssrc);
 				}
 
 

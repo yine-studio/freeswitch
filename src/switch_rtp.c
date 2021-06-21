@@ -6489,7 +6489,7 @@ static switch_status_t read_rtp_packet(switch_rtp_t *rtp_session, switch_size_t 
 		} else {
 			if (rtp_session->last_rtp_hdr.m && rtp_session->last_rtp_hdr.pt != rtp_session->recv_te &&
 				!rtp_session->flags[SWITCH_RTP_FLAG_VIDEO] && !(rtp_session->rtp_bugs & RTP_BUG_IGNORE_MARK_BIT)) {
-				switch_rtp_set_flag(rtp_session, SWITCH_RTP_FLAG_FLUSH);
+				//switch_rtp_set_flag(rtp_session, SWITCH_RTP_FLAG_FLUSH);
 			} else if (rtp_session->last_jb_read_ssrc && rtp_session->last_jb_read_ssrc != read_ssrc) {
 				switch_rtp_set_flag(rtp_session, SWITCH_RTP_FLAG_FLUSH);
 			}
@@ -7716,7 +7716,7 @@ static int rtp_common_read(switch_rtp_t *rtp_session, switch_payload_t *payload_
 			!rtp_session->flags[SWITCH_RTP_FLAG_VIDEO] &&
 			!rtp_session->flags[SWITCH_RTP_FLAG_TEXT] &&
 			!(rtp_session->rtp_bugs & RTP_BUG_IGNORE_MARK_BIT)) {
-			rtp_flush_read_buffer(rtp_session, SWITCH_RTP_FLUSH_ONCE);
+			//rtp_flush_read_buffer(rtp_session, SWITCH_RTP_FLUSH_ONCE);
 		}
 
 		if (rtp_session->last_rtp_hdr.pt == rtp_session->cng_pt || rtp_session->last_rtp_hdr.pt == 13) {
