@@ -26,7 +26,7 @@
  * Anthony Minessale II <anthm@freeswitch.org>
  * Juan Jose Comellas <juanjo@comellas.org>
  * Seven Du <dujinfang@gmail.com>
- *
+ * Windy Wang <xiaofengcanyuexp@163.com>
  *
  * switch_utils.c -- Compatibility and Helper Code
  *
@@ -39,11 +39,20 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #endif
+#include <sys/types.h>
+#include <unistd.h>
+#else
+ /* process.h is required for _getpid() */
+#include <process.h>
 #endif
 #include "private/switch_core_pvt.h"
 #define ESCAPE_META '\\'
 #ifdef SWITCH_HAVE_GUMBO
 #include "gumbo.h"
+#endif
+
+#if defined(HAVE_OPENSSL)
+#include <openssl/evp.h>
 #endif
 
 struct switch_network_node {
@@ -65,6 +74,11 @@ struct switch_network_list {
 	switch_memory_pool_t *pool;
 	char *name;
 };
+
+SWITCH_DECLARE(void *) switch_calloc(size_t nmemb, size_t size)
+{
+	return calloc(nmemb, size);
+}
 
 #ifndef WIN32
 SWITCH_DECLARE(int) switch_inet_pton(int af, const char *src, void *dst)
@@ -1071,7 +1085,7 @@ SWITCH_DECLARE(switch_size_t) switch_b64_decode(const char *in, char *out, switc
 
 		while (l >= 8) {
 			op[ol++] = (char) ((b >> (l -= 8)) % 256);
-			if (ol >= olen - 2) {
+			if (ol >= olen - 1) {
 				goto end;
 			}
 		}
@@ -1113,6 +1127,8 @@ SWITCH_DECLARE(switch_bool_t) switch_simple_email(const char *to,
 	char *newfile = NULL;
 	switch_bool_t rval = SWITCH_FALSE;
 	const char *err = NULL;
+
+	filename[0] = '\0';
 
 	if (zstr(to)) {
 		err = "No to address specified";
@@ -1309,7 +1325,7 @@ SWITCH_DECLARE(switch_bool_t) switch_simple_email(const char *to,
 		close(fd);
 	}
 
-	if (unlink(filename) != 0) {
+	if (!zstr_buf(filename) && unlink(filename) != 0) {
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Failed to delete file [%s]\n", filename);
 	}
 
@@ -4166,11 +4182,12 @@ SWITCH_DECLARE(void) switch_http_parse_qs(switch_http_request_t *request, char *
 	char *q;
 	char *next;
 	char *name, *val;
+	char *dup = NULL;
 
 	if (qs) {
 		q = qs;
 	} else { /*parse our own qs, dup to avoid modify the original string */
-		q = strdup(request->qs);
+		dup = q = strdup(request->qs);
 	}
 
 	switch_assert(q);
@@ -4197,9 +4214,7 @@ SWITCH_DECLARE(void) switch_http_parse_qs(switch_http_request_t *request, char *
 		q = next;
 	} while (q);
 
-	if (!qs) {
-		switch_safe_free(q);
-	}
+	switch_safe_free(dup);
 }
 
 /* clean the uri to protect us from vulnerability attack */
@@ -4529,7 +4544,100 @@ SWITCH_DECLARE(char *)switch_html_strip(const char *str)
 	return text;
 }
 
+SWITCH_DECLARE(unsigned long) switch_getpid(void)
+{
+#ifndef WIN32
+	pid_t pid = getpid();
+#else
+	int pid = _getpid();
+#endif
 
+	return (unsigned long)pid;
+}
+
+SWITCH_DECLARE(switch_status_t) switch_digest(const char *digest_name, unsigned char **digest, const void *input, switch_size_t inputLen, unsigned int *outputlen)
+{
+#if defined(HAVE_OPENSSL)
+	EVP_MD_CTX *mdctx;
+	const EVP_MD *md;
+	int size;
+
+	switch_assert(digest);
+
+	if (!digest_name) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Message digest is not set\n");
+		return SWITCH_STATUS_FALSE;
+	}
+
+	md = EVP_get_digestbyname(digest_name);
+
+	if (!md) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Unknown message digest %s\n", digest_name);			
+		return SWITCH_STATUS_FALSE;
+	}
+
+	size = EVP_MD_size(md);
+	if (!size || !(*digest = malloc(size))) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Zero digest size or can't allocate memory to store results %s\n", digest_name);
+		return SWITCH_STATUS_FALSE;
+	}
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	mdctx = EVP_MD_CTX_new();
+#else
+	mdctx = EVP_MD_CTX_create();
+#endif
+
+	if (!mdctx) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "EVP_MD_CTX_new error\n");
+		switch_safe_free(*digest);
+		return SWITCH_STATUS_FALSE;
+	}
+
+	EVP_MD_CTX_init(mdctx);
+	EVP_DigestInit_ex(mdctx, md, NULL);
+	EVP_DigestUpdate(mdctx, input, inputLen);
+	EVP_DigestFinal_ex(mdctx, *digest, outputlen);
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	EVP_MD_CTX_free(mdctx);
+#else
+	EVP_MD_CTX_destroy(mdctx);
+#endif
+
+	return SWITCH_STATUS_SUCCESS;
+#else
+	return SWITCH_STATUS_FALSE;
+#endif
+}
+
+SWITCH_DECLARE(switch_status_t) switch_digest_string(const char *digest_name, char **digest_str, const void *input, switch_size_t inputLen, unsigned int *outputlen)
+{
+	unsigned char *digest = NULL;
+	switch_status_t status;
+	short i = 0, x;
+	uint8_t b;
+
+	status = switch_digest(digest_name, &digest, input, inputLen, outputlen);
+
+	if (status == SWITCH_STATUS_SUCCESS) {
+		if ((*digest_str = malloc(*outputlen * 2 + 1))) {
+			for (x = i = 0; x < *outputlen; x++) {
+				b = (digest[x] >> 4) & 15;
+				(*digest_str)[i++] = b + (b > 9 ? 'a' - 10 : '0');
+				b = digest[x] & 15;
+				(*digest_str)[i++] = b + (b > 9 ? 'a' - 10 : '0');
+			}
+
+			(*digest_str)[i] = '\0';
+		}
+	}
+
+	switch_safe_free(digest);
+	*outputlen = i;
+
+	return status;
+}
 
 /* For Emacs:
  * Local Variables:

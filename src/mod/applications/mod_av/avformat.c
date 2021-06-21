@@ -49,7 +49,7 @@ GCC_DIAG_OFF(deprecated-declarations)
 #define swr_get_out_samples avresample_get_out_samples
 #define swr_get_out_samples avresample_get_out_samples
 #define swr_convert(ctx, odata, osamples, idata, isamples) \
-	avresample_convert(ctx, odata, osamples, 0, (uint8_t **)idata, isamples, 0)
+	avresample_convert(ctx, odata, 0, osamples, (uint8_t **)idata, 0, isamples)
 #else
 #include <libswresample/swresample.h>
 #endif
@@ -382,7 +382,7 @@ static int mod_avformat_alloc_output_context2(AVFormatContext **avctx, AVOutputF
 #if (LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58,7,100))
 		av_strlcpy(s->filename, filename, sizeof(s->filename));
 #else
-		s->url = strdup(filename);
+		s->url = av_strdup(filename);
 		switch_assert(s->url);
 #endif
 	}
@@ -702,7 +702,7 @@ GCC_DIAG_ON(deprecated-declarations)
 
 	switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE, "sample_rate: %d nb_samples: %d\n", mst->frame->sample_rate, mst->frame->nb_samples);
 
-	if (c->sample_fmt != AV_SAMPLE_FMT_S16) {
+	if (c->sample_fmt != AV_SAMPLE_FMT_S16 || c->sample_rate != mst->sample_rate) {
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE, "sample_fmt %d != AV_SAMPLE_FMT_S16, start resampler\n", c->sample_fmt);
 
 		mst->resample_ctx = swr_alloc();
@@ -1113,7 +1113,7 @@ static switch_status_t open_input_file(av_file_context_t *context, switch_file_h
 	/** Open the input file to read from it. */
 	if ((error = avformat_open_input(&context->fc, filename, NULL, NULL)) < 0) {
 		char ebuf[255] = "";
-		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Could not open input file '%s' (error '%s')\n", filename, get_error_text(error, ebuf, sizeof(ebuf)));
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not open input file '%s' (error '%s')\n", filename, get_error_text(error, ebuf, sizeof(ebuf)));
 		switch_goto_status(SWITCH_STATUS_FALSE, err);
 	}
 
@@ -1123,7 +1123,7 @@ static switch_status_t open_input_file(av_file_context_t *context, switch_file_h
 	/** Get information on the input file (number of streams etc.). */
 	if ((error = avformat_find_stream_info(context->fc, opts ? &opts : NULL)) < 0) {
 		char ebuf[255] = "";
-		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Could not open find stream info (error '%s')\n", get_error_text(error, ebuf, sizeof(ebuf)));
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not open find stream info (error '%s')\n", get_error_text(error, ebuf, sizeof(ebuf)));
 		if (opts) av_dict_free(&opts);
 		switch_goto_status(SWITCH_STATUS_FALSE, err);
 	}
@@ -1194,7 +1194,7 @@ GCC_DIAG_ON(deprecated-declarations)
 	// printf("has audio:%d has_video:%d\n", context->has_audio, context->has_video);
 
 	if ((!context->has_audio) && (!context->has_video)) {
-		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Neither audio nor video stream found in file %s\n", filename);
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Neither audio nor video stream found in file %s\n", filename);
 		switch_goto_status(SWITCH_STATUS_FALSE, err);
 	}
 
@@ -1231,7 +1231,7 @@ GCC_DIAG_ON(deprecated-declarations)
 		context->audio_st[1].sample_rate = handle->samplerate;
 
 GCC_DIAG_OFF(deprecated-declarations)
-		if (context->audio_st[0].st->codec->sample_fmt != AV_SAMPLE_FMT_S16) {
+		if (context->audio_st[0].st->codec->sample_fmt != AV_SAMPLE_FMT_S16 || context->audio_st[0].st->codec->sample_rate != handle->samplerate) {
 GCC_DIAG_ON(deprecated-declarations)
 			int x;
  			for (x = 0; x < context->has_audio && x < 2 && c[x]; x++) {
@@ -1378,7 +1378,7 @@ GCC_DIAG_ON(deprecated-declarations)
 				pkt.stream_index = context->video_st.st->index;
 			} else {
 				char ebuf[255] = "";
-				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Could not read frame (error '%s')\n", get_error_text(error, ebuf, sizeof(ebuf)));
+				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not read frame (error '%s')\n", get_error_text(error, ebuf, sizeof(ebuf)));
 				break;
 			}
 		}
@@ -1400,7 +1400,7 @@ GCC_DIAG_OFF(deprecated-declarations)
 			if ((error = avcodec_decode_video2(context->video_st.st->codec, vframe, &got_data, &pkt)) < 0) {
 GCC_DIAG_ON(deprecated-declarations)
 				char ebuf[255] = "";
-				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Could not decode frame (error '%s')\n", get_error_text(error, ebuf, sizeof(ebuf)));
+				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not decode frame (error '%s')\n", get_error_text(error, ebuf, sizeof(ebuf)));
 				av_packet_unref(&pkt);
 				av_frame_free(&vframe);
 				break;
@@ -1523,7 +1523,7 @@ GCC_DIAG_OFF(deprecated-declarations)
 			if ((error = avcodec_decode_audio4(context->audio_st[0].st->codec, &in_frame, &got_data, &pkt)) < 0) {
 GCC_DIAG_ON(deprecated-declarations)
 				char ebuf[255] = "";
-				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Could not decode frame (error '%s')\n", get_error_text(error, ebuf, sizeof(ebuf)));
+				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not decode frame (error '%s')\n", get_error_text(error, ebuf, sizeof(ebuf)));
 				av_packet_unref(&pkt);
 				break;
 			}
@@ -1571,6 +1571,8 @@ GCC_DIAG_ON(deprecated-declarations)
 
 			}
 
+		} else {
+			av_packet_unref(&pkt);
 		}
 	}
 

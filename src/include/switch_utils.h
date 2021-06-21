@@ -1338,6 +1338,12 @@ SWITCH_DECLARE(void) switch_split_time(const char *exp, int *hour, int *min, int
 */
 SWITCH_DECLARE(int) switch_split_user_domain(char *in, char **user, char **domain);
 
+SWITCH_DECLARE(void *) switch_calloc(size_t nmemb, size_t size);
+
+#ifdef __clang_analyzer__
+#define calloc switch_calloc
+#endif
+
 /* malloc or DIE macros */
 #ifdef NDEBUG
 #define switch_malloc(ptr, len) (void)( (!!(ptr = malloc(len))) || (fprintf(stderr,"ABORT! Malloc failure at: %s:%d", __FILE__, __LINE__),abort(), 0), ptr )
@@ -1451,6 +1457,11 @@ typedef struct {
 SWITCH_DECLARE(void) switch_getcputime(switch_cputime *t);
 
 SWITCH_DECLARE(char *)switch_html_strip(const char *str);
+
+SWITCH_DECLARE(unsigned long) switch_getpid(void);
+
+SWITCH_DECLARE(switch_status_t) switch_digest(const char *digest_name, unsigned char **digest, const void *input, switch_size_t inputLen, unsigned int *outputlen);
+SWITCH_DECLARE(switch_status_t) switch_digest_string(const char *digest_name, char **digest_str, const void *input, switch_size_t inputLen, unsigned int *outputlen);
 
 SWITCH_END_EXTERN_C
 #endif
