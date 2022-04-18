@@ -1366,6 +1366,13 @@ switch_status_t sofia_glue_do_invite(switch_core_session_t *session)
 			//	switch_goto_status(SWITCH_STATUS_FALSE, end);
 			//}
 
+			if (!strncasecmp(url_str, "sip:", 4)) { 
+				s = url_str + 4; 
+				switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(tech_pvt->session), SWITCH_LOG_WARNING,
+								  "URL Warn! tel: uri's not supported at this time, url_str:[%s]\n", url_str);
+			}
+			
+
 			if (!s) {
 				s = url_str;
 			}
