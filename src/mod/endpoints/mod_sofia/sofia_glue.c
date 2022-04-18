@@ -1360,11 +1360,11 @@ switch_status_t sofia_glue_do_invite(switch_core_session_t *session)
 			/* tel: patch from jaybinks, added by MC
                It compiles but I don't have a way to test it
 			*/
-			if (!strncasecmp(url_str, "tel:", 4)) {
-				switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(tech_pvt->session),
-								  SWITCH_LOG_ERROR, "URL Error! tel: uri's not supported at this time\n");
-				switch_goto_status(SWITCH_STATUS_FALSE, end);
-			}
+			//if (!strncasecmp(url_str, "tel:", 4)) {
+			//	switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(tech_pvt->session),
+			//					  SWITCH_LOG_ERROR, "URL Error! tel: uri's not supported at this time\n");
+			//	switch_goto_status(SWITCH_STATUS_FALSE, end);
+			//}
 			if (!s) {
 				s = url_str;
 			}
