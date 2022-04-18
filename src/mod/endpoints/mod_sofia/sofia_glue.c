@@ -1365,6 +1365,7 @@ switch_status_t sofia_glue_do_invite(switch_core_session_t *session)
 			//					  SWITCH_LOG_ERROR, "URL Error! tel: uri's not supported at this time\n");
 			//	switch_goto_status(SWITCH_STATUS_FALSE, end);
 			//}
+
 			if (!s) {
 				s = url_str;
 			}
