@@ -1643,8 +1643,6 @@ switch_status_t sofia_glue_do_invite(switch_core_session_t *session)
 		is_t38 = 1;
     }
 
-	switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(tech_pvt->session), SWITCH_LOG_WARNING, "<===========================>\n");
-
 	if (sofia_use_soa(tech_pvt)) {
 		nua_invite(tech_pvt->nh,
 				   NUTAG_AUTOANSWER(0),
