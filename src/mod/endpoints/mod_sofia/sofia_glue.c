@@ -1652,6 +1652,9 @@ switch_status_t sofia_glue_do_invite(switch_core_session_t *session)
 		if (sofia_test_pflag(tech_pvt->profile, PFLAG_UPDATE_REFRESHER) || switch_channel_var_true(tech_pvt->channel, "sip_update_refresher")) {
 			tech_pvt->update_refresher = 1;
 		}
+		if (switch_channel_var_true(tech_pvt->channel, "sip_refresher_without_sdp")) { 
+			tech_pvt->refresher_without_sdp = 1; 
+		}
 	} else {
 		tech_pvt->session_refresher = nua_no_refresher;
 	}
@@ -1684,6 +1687,7 @@ switch_status_t sofia_glue_do_invite(switch_core_session_t *session)
 				   NUTAG_SESSION_TIMER(tech_pvt->session_timeout),
 				   NUTAG_SESSION_REFRESHER(tech_pvt->session_refresher),
 				   NUTAG_UPDATE_REFRESH(tech_pvt->update_refresher),
+				   NUTAG_REFRESH_WITHOUT_SDP(tech_pvt->refresher_without_sdp),
 				   TAG_IF(!zstr(session_id_header), SIPTAG_HEADER_STR(session_id_header)),
 				   TAG_IF(sofia_test_flag(tech_pvt, TFLAG_RECOVERED), NUTAG_INVITE_TIMER(UINT_MAX)),
 				   TAG_IF(invite_full_from, SIPTAG_FROM_STR(invite_full_from)),
@@ -1724,6 +1728,7 @@ switch_status_t sofia_glue_do_invite(switch_core_session_t *session)
 				   NUTAG_SESSION_TIMER(tech_pvt->session_timeout),
 				   NUTAG_SESSION_REFRESHER(tech_pvt->session_refresher),
 				   NUTAG_UPDATE_REFRESH(tech_pvt->update_refresher),
+				   NUTAG_REFRESH_WITHOUT_SDP(tech_pvt->refresher_without_sdp),
 				   TAG_IF(!zstr(session_id_header), SIPTAG_HEADER_STR(session_id_header)),
 				   TAG_IF(sofia_test_flag(tech_pvt, TFLAG_RECOVERED), NUTAG_INVITE_TIMER(UINT_MAX)),
 				   TAG_IF(invite_full_from, SIPTAG_FROM_STR(invite_full_from)),

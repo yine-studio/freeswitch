@@ -35,6 +35,7 @@
 static const switch_state_handler_table_t audio_bridge_peer_state_handlers;
 static void cleanup_proxy_mode_a(switch_core_session_t *session);
 static void cleanup_proxy_mode_b(switch_core_session_t *session);
+static void abort_call(switch_channel_t *caller_channel, switch_channel_t *peer_channel);
 
 /* Bridge Related Stuff*/
 /*********************************************************************************/
@@ -1130,8 +1131,26 @@ static switch_status_t uuid_bridge_on_reset(switch_core_session_t *session)
 
 	cleanup_proxy_mode_b(session);
 
+	//modify by YX0416
 	if (switch_channel_test_flag(channel, CF_UUID_BRIDGE_ORIGINATOR)) {
-		switch_channel_set_state(channel, CS_SOFT_EXECUTE);
+		switch_channel_state_t state = switch_channel_set_state(channel, CS_SOFT_EXECUTE);
+
+		if (switch_channel_test_flag(channel, CF_UUID_BRIDGE_ORIGINATOR) && state >= CS_HANGUP) {
+			switch_core_session_t *other_session = NULL;
+			const char *other_uuid = NULL;
+			if ((other_uuid = switch_channel_get_variable(channel, SWITCH_UUID_BRIDGE)) &&
+				(other_session = switch_core_session_locate(other_uuid))) {
+				switch_channel_t *other_channel = switch_core_session_get_channel(other_session);
+
+				abort_call(channel, other_channel);
+				switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_NOTICE, "RESET, originator hangup while bridge.\n");
+			}
+
+			if (other_session) {
+				switch_core_session_rwunlock(other_session);
+				other_session = NULL;
+			}
+		}
 	}
 
 	return SWITCH_STATUS_SUCCESS;
@@ -1139,7 +1158,26 @@ static switch_status_t uuid_bridge_on_reset(switch_core_session_t *session)
 
 static switch_status_t uuid_bridge_on_hibernate(switch_core_session_t *session)
 {
-	switch_channel_set_state(switch_core_session_get_channel(session), CS_RESET);
+	//modify by YX0416
+	switch_channel_t *channel = switch_core_session_get_channel(session);
+	switch_channel_state_t state = switch_channel_set_state(switch_core_session_get_channel(session), CS_RESET);
+
+	if (switch_channel_test_flag(channel, CF_UUID_BRIDGE_ORIGINATOR) && state >= CS_HANGUP) {
+		switch_core_session_t *other_session = NULL;
+		const char *other_uuid = NULL;
+		if ((other_uuid = switch_channel_get_variable(channel, SWITCH_UUID_BRIDGE)) &&
+			(other_session = switch_core_session_locate(other_uuid))) {
+			switch_channel_t *other_channel = switch_core_session_get_channel(other_session);
+
+			abort_call(channel, other_channel);
+			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_NOTICE, "HIBERNATE, originator hangup while bridge.\n");
+		}
+
+		if (other_session) {
+			switch_core_session_rwunlock(other_session);
+			other_session = NULL;
+		}
+	}
 	return SWITCH_STATUS_FALSE;
 }
 
@@ -1202,7 +1240,8 @@ static switch_status_t uuid_bridge_on_soft_execute(switch_core_session_t *sessio
 
 		switch_core_session_reset(session, SWITCH_TRUE, SWITCH_TRUE);
 
-		if (switch_ivr_wait_for_answer(session, other_session) != SWITCH_STATUS_SUCCESS) {
+		//modify by YX0416
+		if (switch_channel_down(channel) || switch_ivr_wait_for_answer(session, other_session) != SWITCH_STATUS_SUCCESS) {
 			if (switch_true(switch_channel_get_variable(channel, "uuid_bridge_continue_on_cancel"))) {
 				switch_channel_set_state(channel, CS_EXECUTE);
 			} else if (switch_true(switch_channel_get_variable(channel, "uuid_bridge_park_on_cancel"))) {
@@ -1210,6 +1249,10 @@ static switch_status_t uuid_bridge_on_soft_execute(switch_core_session_t *sessio
 			} else if (!switch_channel_test_flag(channel, CF_TRANSFER)) {
 				switch_channel_hangup(channel, SWITCH_CAUSE_ORIGINATOR_CANCEL);
 			}
+
+			//no matter other_channel media ready or not, we should hangup other_channel.
+			abort_call(channel, other_channel);
+
 			goto done;
 		}
 
@@ -2090,8 +2133,15 @@ SWITCH_DECLARE(switch_status_t) switch_ivr_uuid_bridge(const char *originator_uu
 			originator_cp = switch_channel_get_caller_profile(originator_channel);
 			originatee_cp = switch_channel_get_caller_profile(originatee_channel);
 
-
-
+			//modify by YX0416
+			if (!originatee_cp) {
+				switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(originatee_session), SWITCH_LOG_CRIT, "Originatee init has not completed, cannot bridge them.\n");
+				switch_core_session_rwunlock(originator_session);
+				switch_core_session_rwunlock(originatee_session);
+				return SWITCH_STATUS_FALSE;
+			}
+			//end modify
+			
 			if (switch_channel_outbound_display(originator_channel)) {
 				switch_channel_invert_cid(originator_channel);
 
@@ -2208,13 +2258,20 @@ SWITCH_DECLARE(switch_status_t) switch_ivr_uuid_bridge(const char *originator_uu
 			switch_channel_add_state_handler(originatee_channel, &uuid_bridge_state_handlers);
 
 			state = switch_channel_get_state(originator_channel);
-			switch_channel_set_state(originator_channel, state == CS_HIBERNATE ? CS_CONSUME_MEDIA : CS_HIBERNATE);
-			state = switch_channel_get_state(originatee_channel);
-			switch_channel_set_state(originatee_channel, state == CS_HIBERNATE ? CS_CONSUME_MEDIA : CS_HIBERNATE);
+			//modify by YX0416
+			state = switch_channel_set_state(originator_channel, state == CS_HIBERNATE ? CS_CONSUME_MEDIA : CS_HIBERNATE);
+			if (state >= CS_HANGUP) {
+				//originator has hangup while uuid_bridge,abort call
+				abort_call(originator_channel, originatee_channel);
+				switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(originator_session), SWITCH_LOG_NOTICE, "originator hangup while bridge.\n");
+			} else {
+				state = switch_channel_get_state(originatee_channel);
+				switch_channel_set_state(originatee_channel, state == CS_HIBERNATE ? CS_CONSUME_MEDIA : CS_HIBERNATE);
 
-			status = SWITCH_STATUS_SUCCESS;
+				status = SWITCH_STATUS_SUCCESS;
 
-			//switch_ivr_bridge_display(originator_session, originatee_session);
+				// switch_ivr_bridge_display(originator_session, originatee_session);
+			}
 
 			/* release the read locks we have on the channels */
 			switch_core_session_rwunlock(originator_session);

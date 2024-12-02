@@ -12737,6 +12737,11 @@ SWITCH_DECLARE(switch_status_t) switch_core_media_receive_message(switch_core_se
 	case SWITCH_MESSAGE_INDICATE_UNHOLD:
 		{
 			if (a_engine && a_engine->rtp_session) {
+				// modify 25596 2022/01/21
+				switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_NOTICE, "SWITCH_MESSAGE_INDICATE_UNHOLD\n");
+				rtp_flush_read_buffer(a_engine->rtp_session, SWITCH_RTP_FLUSH_ONCE);
+				// end modify
+
 				switch_rtp_set_max_missed_packets(a_engine->rtp_session, a_engine->max_missed_packets);
 				switch_rtp_set_media_timeout(a_engine->rtp_session, a_engine->media_timeout);
 			}

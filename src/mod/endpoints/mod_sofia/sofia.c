@@ -933,6 +933,8 @@ void sofia_handle_sip_i_bye(switch_core_session_t *session, int status,
 #ifdef MANUAL_BYE
 	int cause;
 	char st[80] = "";
+	switch_core_session_t *other_session = NULL;
+	const char *other_uuid = NULL;
 #endif
 
 	if (!session || !sip) {
@@ -1059,6 +1061,22 @@ void sofia_handle_sip_i_bye(switch_core_session_t *session, int status,
 			}
 			switch_core_session_rwunlock(nsession);
 		}
+	}
+
+	//modify by YX0416
+	if ((other_uuid = switch_channel_get_variable(channel, SWITCH_UUID_BRIDGE)) &&
+		(other_session = switch_core_session_locate(other_uuid))) {
+		switch_channel_t *other_channel = switch_core_session_get_channel(other_session);
+
+		switch_channel_hangup(other_channel, cause);
+
+		switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_INFO,
+							"originator hangup while bridge.\n");
+	}
+
+	if (other_session) {
+		switch_core_session_rwunlock(other_session);
+		other_session = NULL;
 	}
 
 
@@ -7603,6 +7621,22 @@ static void sofia_handle_sip_i_state(switch_core_session_t *session, int status,
 		case 180:
 			switch_channel_mark_ring_ready(channel);
 			break;
+		// modify by YX0416  passthrough 181
+		case 181:
+			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_DEBUG, "callee recv 181\n");
+
+			if (switch_core_session_get_partner(session, &other_session) == SWITCH_STATUS_SUCCESS) {
+				other_channel = switch_core_session_get_channel(other_session);
+				switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_DEBUG,
+								  "send  INDICATE_FORWARDED to channel %s\n",
+								  switch_channel_get_name(other_channel));
+				//switch_channel_mark_ring_ready_value(channel, SWITCH_RING_READY_QUEUED);
+
+				switch_core_session_queue_indication(other_session, SWITCH_MESSAGE_INDICATE_FORWARDED);
+				switch_core_session_rwunlock(other_session);
+			}
+			break;
+		// modify end
 		case 182:
 			switch_channel_mark_ring_ready_value(channel, SWITCH_RING_READY_QUEUED);
 			break;
@@ -8534,6 +8568,12 @@ static void sofia_handle_sip_i_state(switch_core_session_t *session, int status,
 
 		if (r_sdp && sofia_test_flag(tech_pvt, TFLAG_NOSDP_REINVITE)) {
 			sofia_clear_flag_locked(tech_pvt, TFLAG_NOSDP_REINVITE);
+			//modify by yx0416
+			//case:fs recv reInvite(sendonly means hold) first,then recv reInvite with no sdp(unhold)
+			//mparams.hold_laps should reset,otherwise no audio after unhold
+			tech_pvt->mparams.hold_laps = 0;
+			//end modify
+			
 			if (switch_channel_test_flag(channel, CF_PROXY_MODE) || switch_channel_test_flag(channel, CF_PROXY_MEDIA)) {
 				if (switch_channel_test_flag(channel, CF_PROXY_MEDIA)) {
 					if (sofia_media_activate_rtp(tech_pvt) != SWITCH_STATUS_SUCCESS) {

@@ -126,7 +126,8 @@ api_command_t conference_api_sub_commands[] = {
 	{"vid-fgimg", (void_fn_t) & conference_api_sub_canvas_fgimg, CONF_API_SUB_ARGS_SPLIT, "vid-fgimg", "<file> | clear [<canvas-id>]"},
 	{"vid-bgimg", (void_fn_t) & conference_api_sub_canvas_bgimg, CONF_API_SUB_ARGS_SPLIT, "vid-bgimg", "<file> | clear [<canvas-id>]"},
 	{"vid-bandwidth", (void_fn_t) & conference_api_sub_vid_bandwidth, CONF_API_SUB_ARGS_SPLIT, "vid-bandwidth", "<BW>"},
-	{"vid-personal", (void_fn_t) & conference_api_sub_vid_personal, CONF_API_SUB_ARGS_SPLIT, "vid-personal", "[on|off]"}
+	{"vid-personal", (void_fn_t) & conference_api_sub_vid_personal, CONF_API_SUB_ARGS_SPLIT, "vid-personal", "[on|off]"},
+	{"endconf-moderator", (void_fn_t)&conference_api_sub_endconf_moderator, CONF_API_SUB_ARGS_SPLIT, "endconf-moderator", "<member_id> <off|on>"}
 };
 
 switch_status_t conference_api_sub_pause_play(conference_obj_t *conference, switch_stream_handle_t *stream, int argc, char **argv)
@@ -1637,6 +1638,53 @@ switch_status_t conference_api_sub_vid_personal(conference_obj_t *conference, sw
 	}
 
 	stream->write_function(stream, "+OK personal is %s\n", on ? "on" : "off");
+
+	return SWITCH_STATUS_SUCCESS;
+}
+
+switch_status_t conference_api_sub_endconf_moderator(conference_obj_t *conference, switch_stream_handle_t *stream, int argc, char **argv)
+{
+	uint32_t id = 0;
+	//switch_event_t *event;
+	conference_member_t *member = NULL;
+	char *data = NULL;
+
+	if (argc < 4) {
+		stream->write_function(stream, "-ERR argc %d\n", argc);
+		return SWITCH_STATUS_GENERR;
+	}
+
+	if (!(id = atoi(argv[2]))) {
+		stream->write_function(stream, "-ERR Non-Existant ID %u\n", id);
+		return SWITCH_STATUS_GENERR;
+	}
+
+	data = argv[3];
+	if (!(data)) return SWITCH_STATUS_GENERR;
+
+	if (!strcasecmp((char *)data, "off")) {
+		switch_mutex_lock(conference->mutex);
+		if ((member = conference_member_get(conference, id))) {
+			if (!--conference->end_count) { conference->endconference_time = switch_epoch_time_now(NULL); }
+			conference_utils_member_clear_flag_locked(member, MFLAG_ENDCONF);
+			conference_utils_member_clear_flag_locked(member, MFLAG_MOD);
+			switch_thread_rwlock_unlock(member->rwlock);
+		}
+		switch_mutex_unlock(conference->mutex);
+	} else if (!strcasecmp((char *)data, "on")) {
+		switch_mutex_lock(conference->mutex);
+		if ((member = conference_member_get(conference, id))) {
+			if (conference->end_count++) { conference->endconference_time = 0; }
+			conference_utils_member_set_flag_locked(member, MFLAG_ENDCONF);
+			conference_utils_member_set_flag_locked(member, MFLAG_MOD);
+			switch_thread_rwlock_unlock(member->rwlock);
+		}
+		switch_mutex_unlock(conference->mutex);
+	} else {
+		return SWITCH_STATUS_GENERR;
+	}
+
+	stream->write_function(stream, "+OK endconf-moderator %u %s\n", id, (char *)data);
 
 	return SWITCH_STATUS_SUCCESS;
 }

@@ -967,6 +967,9 @@ static switch_status_t sofia_answer_channel(switch_core_session_t *session)
 			if (sofia_test_pflag(tech_pvt->profile, PFLAG_UPDATE_REFRESHER) || switch_channel_var_true(tech_pvt->channel, "sip_update_refresher")) {
 				tech_pvt->update_refresher = 1;
 			}
+			if (switch_channel_var_true(tech_pvt->channel, "sip_refresher_without_sdp")) {
+				tech_pvt->refresher_without_sdp = 1;
+			}
 		} else {
 			tech_pvt->session_refresher = nua_no_refresher;
 		}
@@ -981,6 +984,7 @@ static switch_status_t sofia_answer_channel(switch_core_session_t *session)
 						NUTAG_SESSION_TIMER(tech_pvt->session_timeout),
 						NUTAG_SESSION_REFRESHER(tech_pvt->session_refresher),
 						NUTAG_UPDATE_REFRESH(tech_pvt->update_refresher),
+						NUTAG_REFRESH_WITHOUT_SDP(tech_pvt->refresher_without_sdp),
 						SIPTAG_CONTACT_STR(tech_pvt->reply_contact),
 						SIPTAG_CALL_INFO_STR(switch_channel_get_variable(tech_pvt->channel, SOFIA_SIP_HEADER_PREFIX "call_info")),
 						SOATAG_USER_SDP_STR(tech_pvt->mparams.local_sdp_str),
@@ -1002,6 +1006,7 @@ static switch_status_t sofia_answer_channel(switch_core_session_t *session)
 						NUTAG_SESSION_TIMER(tech_pvt->session_timeout),
 						NUTAG_SESSION_REFRESHER(tech_pvt->session_refresher),
 						NUTAG_UPDATE_REFRESH(tech_pvt->update_refresher),
+						NUTAG_REFRESH_WITHOUT_SDP(tech_pvt->refresher_without_sdp),
 						SIPTAG_CONTACT_STR(tech_pvt->reply_contact),
 						SIPTAG_CALL_INFO_STR(switch_channel_get_variable(tech_pvt->channel, SOFIA_SIP_HEADER_PREFIX "call_info")),
 						SIPTAG_CONTENT_TYPE_STR("application/sdp"),
@@ -2084,6 +2089,7 @@ static switch_status_t sofia_receive_message(switch_core_session_t *session, swi
 									   NUTAG_SESSION_TIMER(tech_pvt->session_timeout),
 									   NUTAG_SESSION_REFRESHER(tech_pvt->session_refresher),
 									   NUTAG_UPDATE_REFRESH(tech_pvt->update_refresher),
+									   NUTAG_REFRESH_WITHOUT_SDP(tech_pvt->refresher_without_sdp),
 									   TAG_IF(!zstr(tech_pvt->privacy), SIPTAG_PRIVACY_STR(tech_pvt->privacy)),
 									   TAG_IF(call_info, SIPTAG_CALL_INFO_STR(call_info)),
 									   TAG_IF(!zstr(tech_pvt->route_uri), NUTAG_PROXY(tech_pvt->route_uri)),
@@ -2150,6 +2156,7 @@ static switch_status_t sofia_receive_message(switch_core_session_t *session, swi
 								   NUTAG_SESSION_TIMER(tech_pvt->session_timeout),
 								   NUTAG_SESSION_REFRESHER(tech_pvt->session_refresher),
 								   NUTAG_UPDATE_REFRESH(tech_pvt->update_refresher),
+								   NUTAG_REFRESH_WITHOUT_SDP(tech_pvt->refresher_without_sdp),
 								   TAG_IF(!zstr(tech_pvt->route_uri), NUTAG_PROXY(tech_pvt->route_uri)),
 								   TAG_IF(!zstr_buf(message), SIPTAG_HEADER_STR(message)),
 								   TAG_IF(!zstr(tech_pvt->user_via), SIPTAG_VIA_STR(tech_pvt->user_via)),
@@ -2512,6 +2519,39 @@ static switch_status_t sofia_receive_message(switch_core_session_t *session, swi
 
 				switch_safe_free(extra_header);
 				switch_channel_mark_ring_ready(channel);
+			}
+		}
+		break;
+	case SWITCH_MESSAGE_INDICATE_FORWARDED:
+		{
+			if(sofia_acknowledge_call(session) == SWITCH_STATUS_SUCCESS) {
+				switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_WARNING, "Dialplan did not acknowledge_call; sent 100 Trying");
+			}
+
+			if (!sofia_test_flag(tech_pvt, TFLAG_BYE) && !switch_channel_test_flag(channel, CF_ANSWERED)) {
+				char *extra_header = sofia_glue_get_extra_headers(channel, SOFIA_SIP_PROGRESS_HEADER_PREFIX);
+				const char *call_info = switch_channel_get_variable(channel, "presence_call_info_full");
+				char *cid = generate_pai_str(tech_pvt);
+				const char *session_id_header = sofia_glue_session_id_header(tech_pvt->session, tech_pvt->profile);
+
+				/* Set sip_to_tag to local tag for inbound channels. */
+				if (switch_channel_direction(channel) == SWITCH_CALL_DIRECTION_INBOUND) {
+					const char* to_tag = "";
+					to_tag = switch_str_nil(nta_leg_get_tag(nua_get_dialog_state_leg(tech_pvt->nh)));
+					if(to_tag) {
+						switch_channel_set_variable(channel, "sip_to_tag", to_tag);
+					}
+				}
+
+				nua_respond(tech_pvt->nh, SIP_181_CALL_IS_BEING_FORWARDED,
+							SIPTAG_CONTACT_STR(tech_pvt->reply_contact),
+							TAG_IF(cid, SIPTAG_HEADER_STR(cid)),
+							TAG_IF(call_info, SIPTAG_CALL_INFO_STR(call_info)),
+							TAG_IF(!zstr(extra_header), SIPTAG_HEADER_STR(extra_header)),
+							TAG_IF(!zstr(session_id_header), SIPTAG_HEADER_STR(session_id_header)),
+							TAG_END());
+
+				switch_safe_free(extra_header);
 			}
 		}
 		break;

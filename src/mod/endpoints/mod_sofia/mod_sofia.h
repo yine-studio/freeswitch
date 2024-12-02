@@ -893,6 +893,7 @@ struct private_object {
 	uint32_t recv_invites;
 	uint8_t sent_last_invite;
 	uint32_t req_media_counter;
+	int refresher_without_sdp;
 };
 
 
